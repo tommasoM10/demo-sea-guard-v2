@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a3d62" />
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <title>SeaGuard v2.1 – Prototype (Camera + Demo)</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#061a2b; color:#eaf2f9; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;}
+    #app { display:flex; flex-direction:column; height:100%; }
+    header { padding:10px 14px; background:#0a3d62; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    header h1 { margin:0; font-size:18px; }
+    header .badge { font-size:12px; padding:4px 8px; border-radius:12px; background:#123c69; opacity:0.9;}
+    main { flex:1; display:grid; grid-template-columns: 1fr 360px; gap:10px; padding:10px; }
+    #stage { position:relative; background:#001221; border-radius:10px; overflow:hidden; }
+    video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform: scaleX(-1); }
+    canvas { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+    #controls { background:#0c2742; border-radius:10px; padding:12px; overflow:auto; }
+    .row { margin-bottom:10px; }
+    label { display:block; font-size:13px; opacity:0.9; margin-bottom:4px;}
+    select, input[type=number], input[type=range], input[type=checkbox], button { width:100%; padding:8px; border-radius:8px; border:1px solid #214d78; background:#0b3357; color:#eaf2f9; }
+    button.primary { background:#1e90ff; border-color:#1e90ff; color:#001221; font-weight:700; }
+    button.warn { background:#ffc107; color:#001221; border-color:#ffc107; }
+    button.danger { background:#ff4757; border-color:#ff4757; }
+    .small { font-size:12px; opacity:0.85; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .status { background:#07233b; border-radius:8px; padding:8px; font-size:12px; line-height:1.4;}
+    .pill { display:inline-block; background:#193a59; padding:2px 8px; border-radius:999px; margin:2px; }
+    .legend { display:flex; gap:8px; align-items:center; font-size:12px; opacity:0.9; }
+    .legend span.box { width:12px; height:12px; display:inline-block; border-radius:2px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>SeaGuard v2.1 <span class="badge">Prototype</span></h1>
+    <div class="legend">
+      <span class="box" style="background:#2ed573"></span> visibile
+      <span class="box" style="background:#ffa502"></span> pre-allerta
+      <span class="box" style="background:#ff4757"></span> allerta
+    </div>
+  </header>
+  <main>
+    <section id="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </section>
+    <aside id="controls">
+      <div class="row grid">
+        <div>
+          <label for="sourceSelect">Sorgente</label>
+          <select id="sourceSelect">
+            <option value="camera" selected>Fotocamera</option>
+            <option value="demo">Demo (video sintetico)</option>
+          </select>
+        </div>
+        <div>
+          <label for="cameraSelect">Fotocamera</label>
+          <select id="cameraSelect"></select>
+        </div>
+      </div>
+
+      <div class="row grid">
+        <div>
+          <label for="profileSelect">Profilo sito</label>
+          <select id="profileSelect">
+            <option value="sea">Mare</option>
+            <option value="lake">Lago</option>
+            <option value="pool">Piscina</option>
+          </select>
+        </div>
+        <div>
+          <label for="seaState">Stato del mare (0–10)</label>
+          <input id="seaState" type="range" min="0" max="10" step="1" value="4">
+        </div>
+      </div>
+
+      <div class="row grid">
+        <div>
+          <label for="confThreshold">Conf. rilevazione persona</label>
+          <input id="confThreshold" type="range" min="0.3" max="0.9" step="0.05" value="0.6">
+        </div>
+        <div>
+          <label for="useMoveNet"><input type="checkbox" id="useMoveNet" checked> MoveNet (keypoints)</label>
+        </div>
+      </div>
+
+      <div class="row grid">
+        <div>
+          <label for="preAlertSec">Pre-allerta (s)</label>
+          <input id="preAlertSec" type="number" min="0.5" max="10" step="0.1" value="2.5">
+        </div>
+        <div>
+          <label for="alertSec">Allerta piena (s)</label>
+          <input id="alertSec" type="number" min="2" max="15" step="0.1" value="6.5">
+        </div>
+      </div>
+
+      <div class="row grid">
+        <div>
+          <label for="ensembleStrict"><input type="checkbox" id="ensembleStrict" checked> Allerta solo se detector+pose concordano</label>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="startBtn" class="primary">Avvia sessione</button>
+        </div>
+      </div>
+
+      <div class="row grid">
+        <button id="stopBtn" class="danger">Stop</button>
+        <button id="roiBtn" class="warn">Disegna ROI (area acqua)</button>
+      </div>
+      <div class="row grid">
+        <button id="clearRoiBtn">Cancella ROI</button>
+        <button id="exportCsvBtn">Esporta registro allarmi (CSV)</button>
+      </div>
+      <div class="row grid">
+        <button id="beepTestBtn">Test suono</button>
+        <button id="vibeTestBtn">Test vibrazione</button>
+      </div>
+      <div class="row grid">
+        <button id="resetLogBtn">Reset registro</button>
+      </div>
+
+      <div class="row">
+        <div class="status" id="statusBox">
+          <div><strong>Stato:</strong> <span id="runState">inattivo</span></div>
+          <div><strong>FPS:</strong> <span id="fps">-</span></div>
+          <div><strong>Persone tracciate:</strong> <span id="trackedCount">0</span></div>
+          <div><strong>Allarmi attivi:</strong> <span id="alarmCount">0</span></div>
+          <div><strong>Deriva stimata:</strong> <span id="driftVec">0,0</span></div>
+          <div style="margin-top:6px;"><span class="pill">Feedback:</span>
+            <button id="markFalseBtn">Falso allarme</button>
+            <button id="markApneaBtn">Tuffo/Apnea</button>
+            <button id="markConfirmBtn" class="danger">Confermato pericolo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row small">
+        <p><strong>Note:</strong> prototipo dimostrativo non certificato. Uso come supporto.</p>
+        <p><em>Tip:</em> modalità <b>Demo</b> funziona anche in casa, senza mare.</p>
+      </div>
+    </aside>
+  </main>
+  <footer>© SeaGuard v2.1 – 2025 • PWA • COCO-SSD + MoveNet • Tracking + pose-risk + drift • Demo integrata</footer>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.7.0"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
